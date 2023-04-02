@@ -1,0 +1,18 @@
+CREATE DATABASE chatgpt;
+
+USE chatgpt;
+
+CREATE TABLE conversations (
+    id VARCHAR(36) PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE messages (
+    id VARCHAR(36) PRIMARY KEY,
+    conversation_id VARCHAR(36),
+    parent_message_id VARCHAR(36),
+    text TEXT NOT NULL,
+    role ENUM('user', 'assistant') NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+);
