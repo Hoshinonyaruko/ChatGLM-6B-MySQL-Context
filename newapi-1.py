@@ -10,8 +10,27 @@ app.config['MYSQL_DATABASE_USER'] = 'root'
 app.config['MYSQL_DATABASE_PASSWORD'] = ''
 app.config['MYSQL_DATABASE_DB'] = 'chatgpt'
 app.config['MYSQL_DATABASE_HOST'] = 'localhost'
+app.config['MYSQL_DATABASE_CHARSET'] = 'utf8mb4'
 mysql.init_app(app)
 
+MAX_TOKENS = 2048
+def truncate_history(history, prompt):
+    token_count = sum([len(entry[0]) + (len(entry[1]) if entry[1] else 0) for entry in history]) + len(prompt)
+    if token_count <= MAX_TOKENS:
+        return history
+    
+    # Step 1: Set assistant replies to None
+    truncated_history = [(entry[0], None) for entry in history]
+    token_count = sum([len(entry[0]) for entry in truncated_history]) + len(prompt)
+    if token_count <= MAX_TOKENS:
+        return truncated_history
+    
+    # Step 2: Remove history elements from the beginning until it fits within MAX_TOKENS
+    while token_count > MAX_TOKENS:
+        truncated_history.pop(0)
+        token_count = sum([len(entry[0]) for entry in truncated_history]) + len(prompt)
+    
+    return truncated_history
 
 def create_conversation(conversation_id):
     cursor = mysql.get_db().cursor()
@@ -21,12 +40,16 @@ def create_conversation(conversation_id):
 
 
 def add_message(conversation_id, parent_message_id, text, role):
+    db = mysql.get_db()
+    cursor = db.cursor()
     message_id = str(uuid.uuid4())
-    cursor = mysql.get_db().cursor()
-    query = "INSERT INTO messages (id, conversation_id, parent_message_id, text, role) VALUES (%s, %s, %s, %s, %s)"
+
+    query = """
+        INSERT INTO messages (id, conversation_id, parent_message_id, text, role)
+        VALUES (%s, %s, %s, %s, %s)
+    """
     cursor.execute(query, (message_id, conversation_id, parent_message_id, text, role))
-    mysql.get_db().commit()
-    print(f"Added message: {message_id}, role: {role}, text: {text}")  # Add debug information
+    db.commit()
     return message_id
 
 def get_history(conversation_id, parent_message_id):
@@ -37,6 +60,7 @@ def get_history(conversation_id, parent_message_id):
     history = []
     current_query = None
     for text, role in rows:
+        text = text.decode('utf-8')
         if role == "user":
             if current_query is not None:
                 history.append((current_query, None))
@@ -61,6 +85,7 @@ def chat():
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
         create_conversation(conversation_id)
+        parent_message_id = None
 
     user_message_id = add_message(conversation_id, parent_message_id, message_text, "user")
 
@@ -69,12 +94,14 @@ def chat():
         history = get_history(conversation_id, parent_message_id)
         print("history: " + str(history))
 
-    # 调用API，并传入 history 参数
+        # Truncate history to fit within token limit
+        history = truncate_history(history, message_text)
+        print("truncated history: " + str(history))
+
     response_text = call_chatgpt_api(prompt=message_text, history=history)
 
     assistant_message_id = add_message(conversation_id, user_message_id, response_text, "assistant")
 
-    # 添加下面这行代码以将助手的回答存储到数据库中
     add_message(conversation_id, assistant_message_id, response_text, "assistant")
 
     response = {
@@ -83,7 +110,6 @@ def chat():
         "messageId": assistant_message_id
     }
     return jsonify(response)
-
 
 def call_chatgpt_api(prompt, history):
     url = "http://127.0.0.1:8000"
