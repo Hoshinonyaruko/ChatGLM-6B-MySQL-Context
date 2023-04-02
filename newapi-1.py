@@ -60,7 +60,7 @@ def get_history(conversation_id, parent_message_id):
     history = []
     current_query = None
     for text, role in rows:
-        text = text.decode('utf-8')
+        #text = text.decode('utf-8')
         if role == "user":
             if current_query is not None:
                 history.append((current_query, None))
