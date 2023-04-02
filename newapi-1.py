@@ -102,8 +102,6 @@ def chat():
 
     assistant_message_id = add_message(conversation_id, user_message_id, response_text, "assistant")
 
-    add_message(conversation_id, assistant_message_id, response_text, "assistant")
-
     response = {
         "response": response_text,
         "conversationId": conversation_id,
